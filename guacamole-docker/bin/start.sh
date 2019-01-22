@@ -374,7 +374,7 @@ make sure they are readable for the user in the container.
 END
         exit 1;
     fi
-    if [ "$RADIUS_AUTH_PROTOCOL" == "eap-ttls" -a -z "$RADIUS_EAP_TTLS_INNER_PROTOCOL" ]; then
+    if [ "$RADIUS_AUTH_PROTOCOL" = "eap-ttls" -a -z "$RADIUS_EAP_TTLS_INNER_PROTOCOL" ]; then
        cat <<END
 FATAL: Authentication protocol "eap-ttls" specified but
        RADIUS_EAP_TTLS_INNER_PROTOCOL is not set!
@@ -462,6 +462,45 @@ END
     find /opt/guacamole/openid/ -name "*.jar" | awk -F/ '{print $NF}' | \
     xargs -I '{}' ln -s "/opt/guacamole/openid/{}" "${GUACAMOLE_EXT}/1-{}"
 
+}
+
+##
+## Adds properties to guacamole.properties which configure the Duo two-factor
+## authentication service. Checks to see if all variables are defined and makes sure
+## DUO_APPLICATION_KEY is >= 40 characters.
+##
+associate_duo() {
+    # Verify required parameters are present
+    if [ -z "$DUO_INTEGRATION_KEY" ]      || \
+       [ -z "$DUO_SECRET_KEY" ]           || \
+       [ ${#DUO_APPLICATION_KEY} -lt 40 ]
+    then
+        cat <<END
+FATAL: Missing required environment variables
+-------------------------------------------------------------------------------
+If using the Duo authentication extension, you must provide each of the 
+following environment variables:
+
+    DUO_API_HOSTNAME        The hostname of the Duo API endpoint.
+
+    DUO_INTEGRATION_KEY     The integration key provided for Guacamole by Duo.
+
+    DUO_SECRET_KEY          The secret key provided for Guacamole by Duo. 
+
+    DUO_APPLICATION_KEY     An arbitrary, random key.
+                            This value must be at least 40 characters.
+END
+        exit 1;
+    fi
+
+    # Update config file
+    set_property "duo-api-hostname"                 "$DUO_API_HOSTNAME"
+    set_property "duo-integration-key"              "$DUO_INTEGRATION_KEY"
+    set_property "duo-secret-key"                   "$DUO_SECRET_KEY"
+    set_property "duo-application-key"              "$DUO_APPLICATION_KEY"
+
+    # Add required .jar files to GUACAMOLE_EXT
+    ln -s /opt/guacamole/duo/guacamole-auth-*.jar   "$GUACAMOLE_EXT"
 }
 
 ##
@@ -593,6 +632,11 @@ POSTGRES_DATABASE environment variables, or check Guacamole's Docker
 documentation regarding configuring LDAP and/or custom extensions.
 END
     exit 1;
+fi
+
+# Use Duo if specified.
+if [ -n "$DUO_API_HOSTNAME" ]; then
+    associate_duo
 fi
 
 #
